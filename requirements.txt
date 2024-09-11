@@ -1,0 +1,6 @@
+phonenumbers
+phonenumbers
+email_validator
+langchain
+streamlit
+neo4j
