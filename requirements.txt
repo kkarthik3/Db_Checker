@@ -4,3 +4,4 @@ email_validator
 langchain
 streamlit
 neo4j
+langchain_groq
