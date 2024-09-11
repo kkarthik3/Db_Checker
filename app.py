@@ -19,7 +19,7 @@ llm = ChatGroq(
 
 
 system_prompt = """Instruction:
-Extract the following details from the text:
+Extract the following details from the text only if any of them available on input:
 
 Name
 Email
@@ -40,10 +40,10 @@ Dont Include Values that are not present in the given user input
 
 Example:
 Input:
-karthick,karthick@example.com ,+919876543210,123456789012.
+karthick,karthick@example.com.
 
 Output:
-{"Name": "karthick", "Email": "karthick@example.com", "Phone Number": "+919876543210", "Civil ID Number": "123456789012"}
+{"Name": "karthick", "Email": "karthick@example.com", "Phone Number": "", "Civil ID Number": ""}
 """
 
 if "messages" not in st.session_state:
@@ -91,22 +91,32 @@ if prompt:= st.chat_input("Ask questions about the automotive sales and processe
         
         try:
             json_resp = json.loads(json_resp_str)
+
+            def get_value(key,json_resp):
+                value = json_resp.get(key, "").strip()
+                return None if value == "" else value
+            
+            name = get_value('Name',json_resp)
+            email = get_value('Email',json_resp)
+            phone = get_value('Phone Number',json_resp)
+            civil_id = get_value('Civil ID Number',json_resp)
+
+            st.write(json_resp)
             verify_lead_output  = verify_lead(
-                            name=json_resp.get('Name',None),
-                            email=json_resp.get('Email',None),
-                            phone=json_resp.get('Phone Number',None),
-                            civil_id=json_resp.get('Civil ID Number',None)
+                            name=name,
+                            email=email,
+                            phone=phone,
+                            civil_id=civil_id
                         )
+            print(verify_lead_output)
         except Exception as e:
+            print(e)
             verify_lead_output = json_resp_str
 
-        st.markdown(json_resp_str)
-        print(verify_lead_output)
-
-with st.sidebar:
-    st.title("Output Tool Message To The Primary Agent")
-    with st.container(border=True):
-        if verify_lead_output:
-            st.markdown(verify_lead_output)
-        else:
-            st.markdown("Please Give input To Proceed")
+        with st.sidebar:
+            st.title("Output Tool Message To The Primary Agent")
+            with st.container(border=True):
+                if verify_lead_output:
+                    st.markdown(verify_lead_output)
+                else:
+                    st.markdown("Please Give input To Proceed")

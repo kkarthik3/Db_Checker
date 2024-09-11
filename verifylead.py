@@ -3,6 +3,7 @@ from email_validator import validate_email, EmailNotValidError
 from phonenumbers import NumberParseException, is_valid_number
 import re
 from langchain_community.graphs import Neo4jGraph
+from pyjarowinkler import distance
 
 def graph_db():
     graph = Neo4jGraph()
@@ -76,6 +77,22 @@ def verify_lead(name: str = None, email: str = None, phone: str = None, civil_id
     Returns:
     - Clear and actionable messages for the lead agent to understand the verification results.
     """
+    name, email, phone, civil_id = (None if x.strip() == "" else x for x in [name, email, phone, civil_id])
+
+
+def verify_lead(name: str = None, email: str = None, phone: str = None, civil_id: str = None):
+    """
+    Verify the existence of the Customer in our Database before lead creation.
+    
+    Parameters:
+    - name: Customer's name (optional).
+    - email: Customer's email (optional).
+    - phone: Customer's phone (optional).
+    - civil_id: Customer's civil ID (optional).
+    
+    Returns:
+    - Clear and actionable messages for the lead agent to understand the verification results.
+    """
     def validation():
         phone_validation = True
         civil_validation = True
@@ -103,42 +120,33 @@ def verify_lead(name: str = None, email: str = None, phone: str = None, civil_id
 
     if validated == True:
 
-        name_query = """
-                    MATCH (c:Lead)
-                    WITH c, apoc.text.levenshteinSimilarity(toLower(c.name), toLower($name)) AS similarity_score
-                    WHERE similarity_score > 0.5
-                    RETURN c.name AS customer_name, c.phone_number AS phone_number, c.email AS email, c.civil_id AS civil_id
-                    ORDER BY similarity_score DESC
-                    """
+        query = live_graph.query("""MATCH (c:Lead) RETURN c.name AS customer_name""")
+        names_list = [name for i in query for name in [i['customer_name']]]
 
-        name_contains_query = """
-                    MATCH (c:Lead)
-                    WHERE toLower(c.name) CONTAINS toLower($name)
-                    RETURN c.name AS customer_name, 
-                        c.phone_number AS phone_number, 
-                        c.email AS email, 
-                        c.civil_id AS civil_id
-                    """
-        both_query = """MATCH (c:Lead)
-                        WHERE toLower(c.name) CONTAINS toLower($name)
-                        WITH c
-                        WITH c, apoc.text.levenshteinSimilarity(toLower(c.name), toLower($name)) AS similarity_score
-                        WHERE similarity_score > 0.6
-                        RETURN c.name AS customer_name, 
-                            c.phone_number AS phone_number, 
-                            c.email AS email, 
-                            c.civil_id AS civil_id
-                        ORDER BY similarity_score DESC
-                        """    
+        def split_names(names):
+            return [name.split(' ', 1) if ' ' in name else name for name in names]
+
+        names_list = split_names(names_list)
+        def similar_names(user_name, names_list, threshold=0.7):
+            similar_names = []
+            for name in names_list:
+                if isinstance(name, str):
+                    similarity = distance.get_jaro_distance(user_name, name)
+                    if similarity >= threshold:
+                        similar_names.append((name, similarity))
+                else:
+                    for i in name:
+                        similarity = distance.get_jaro_distance(user_name, i)
+                        if similarity >= threshold:
+                            similar_names.append((' '.join(name), similarity))
+            return similar_names
 
         if name and all(x is None for x in (phone, civil_id, email)):
 
-            name_result = live_graph.query(name_query, {'name': name})
-            name_contains_result = live_graph.query(name_contains_query, {'name': name})
-            both_result = live_graph.query(both_query, {'name': name})
-
+            name_result = similar_names(name, names_list, threshold=0.8)
+            print(name_result)
             if name_result:
-                return f"The provided Name is associated with the following customer(s): {[entry['customer_name'] for entry in name_result]}. Would you like to proceed with one of these customers, or would you prefer to create a new lead?"        
+                return f"The provided Name is associated with the following customer(s): {[i[0] for i in name_result]}. Would you like to proceed with one of these customers, or would you prefer to create a new lead?"        
             else:
                 return f"No matching results were found for the name '{name}'. Please review or confirm the provided details. Would you like to create a new lead instead?"
 
