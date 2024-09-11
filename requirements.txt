@@ -5,3 +5,4 @@ langchain
 streamlit
 neo4j
 langchain_groq
+langchain_community
